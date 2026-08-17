@@ -67,72 +67,72 @@ Basic Usage
 
 Generate 10 realistic passwords with default settings:
 
-zynk
+    zynk
 
 Generate 100 realistic passwords:
 
-zynk -c 100
+    zynk -c 100
 
 Generate passwords with custom length:
 
-zynk -l 16 -c 5
+    zynk -l 16 -c 5
 
 Variable Length
 
 Generate passwords with varying lengths:
 
-zynk -v --min 8 --max 16 -c 20
+    zynk -v --min 8 --max 16 -c 20
 
 Custom Words
 
 Add your own words to the password generation:
 
-zynk -W company2026 -W secret -c 10
+    zynk -W company2026 -W secret -c 10
 
 Load words from a file:
 
-zynk -f words.txt -c 50
+    zynk -f words.txt -c 50
 
 Common Passwords
 
 Include default/common passwords:
 
-zynk --common -c 100
+    zynk --common -c 100
 
 Character Sets
 
 Use specific character sets:
 
 # All character types
-zynk --all -c 20
+    zynk --all -c 20
 
 # Only uppercase and digits
-zynk --uppercase --digits -c 20
+    zynk --uppercase --digits -c 20
 
 # Exclude ambiguous characters
-zynk --all --no-ambiguous -c 20
+    zynk --all --no-ambiguous -c 20
 
 Output File
 
 Specify custom output file:
 
-zynk -o mypasswords.txt -c 100
+    zynk -o mypasswords.txt -c 100
 
 Complete Examples
 
 Generate 1000 passwords with common defaults:
 bash
 
-zynk -c 1000 --common -o wordlist.txt
+    zynk -c 1000 --common -o wordlist.txt
 
 Generate variable length passwords with custom words:
 bash
 
-zynk -v --min 10 --max 20 -W company2026 -W admin -c 50 --all
+    zynk -v --min 10 --max 20 -W company2026 -W admin -c 50 --all
 
 Generate realistic passwords with all features:
 
-zynk -v --min 8 --max 24 -f words.txt --common --all --no-ambiguous -c 1000 -o final_wordlist.txt
+    zynk -v --min 8 --max 24 -f words.txt --common --all --no-ambiguous -c 1000 -o final_wordlist.txt
 
 
 johnson1992
