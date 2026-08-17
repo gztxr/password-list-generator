@@ -136,31 +136,53 @@ Generate realistic passwords with all features:
 
 
 johnson1992
+
 sarah_williams_2001
+
 mikepassword14
+
 alexsmith
+
 david_jones_1995
+
 admin15
+
 robert_adams_1988
+
 iloveyou12
+
 jessica_taylor_2010
+
 
 With Custom Words
 
+
 company2026_party
+
 party_company_2026
+
 company2026party
+
 partycompany2026
+
 company_party_1986
+
 party_company_24
+
 
 With Common Passwords
 
+
 admin123
+
 password2024
+
 root1990
+
 guest2015
+
 admin_1986
+
 
 Use Cases
 
