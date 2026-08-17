@@ -20,47 +20,47 @@ Features
 Installation
 Linux / macOS
 
-    Clone the repository:
+Clone the repository:
 
 
-git clone https://github.com/gztxr/password-generator.git
-cd password-generator
+    git clone https://github.com/gztxr/password-generator.git
+    cd password-generator
 
-    Compile the program:
+Compile the program:
 
 
-gcc -o zynk password_gen.c
+    gcc -o zynk password_gen.c
 
-    Install system-wide (optional):
+Install system-wide (optional):
 
-sudo mv zynk /usr/local/bin/
-sudo chmod +x /usr/local/bin/zynk
+    sudo mv zynk /usr/local/bin/
+    sudo chmod +x /usr/local/bin/zynk
 
 Windows
 
-    Install MinGW or GCC for Windows
+Install MinGW or GCC for Windows
 
-    Clone the repository:
+Clone the repository:
 
-git clone https://github.com/gztxr/password-generator.git
-cd password-generator
+    git clone https://github.com/gztxr/password-generator.git
+    cd password-generator
 
-    Compile:
+Compile:
 
-gcc -o zynk.exe password_gen.c
+    gcc -o zynk.exe password_gen.c
 
-    Add to PATH (optional):
+Add to PATH (optional):
 
-        Move zynk.exe to a directory like C:\Tools
+Move zynk.exe to a directory like C:\Tools
 
-        Add C:\Tools to your system PATH
+Add C:\Tools to your system PATH
 
 Quick Install (Linux/macOS)
 
-git clone https://github.com/gztxr/password-generator.git
-cd password-generator
-gcc -o zynk password_gen.c
-sudo mv zynk /usr/local/bin/
+    git clone https://github.com/gztxr/password-generator.git
+    cd password-generator
+    gcc -o zynk password_gen.c
+    sudo mv zynk /usr/local/bin/
 
 Usage
 Basic Usage
