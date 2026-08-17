@@ -29,7 +29,7 @@ cd password-generator
     Compile the program:
 
 
-gcc -o zynk password_generator.c
+gcc -o zynk password_gen.c
 
     Install system-wide (optional):
 
@@ -47,7 +47,7 @@ cd password-generator
 
     Compile:
 
-gcc -o zynk.exe password_generator.c
+gcc -o zynk.exe password_gen.c
 
     Add to PATH (optional):
 
@@ -59,7 +59,7 @@ Quick Install (Linux/macOS)
 
 git clone https://github.com/gztxr/password-generator.git
 cd password-generator
-gcc -o zynk password_generator.c
+gcc -o zynk password_gen.c
 sudo mv zynk /usr/local/bin/
 
 Usage
@@ -155,7 +155,7 @@ jessica_taylor_2010
 
 
 
-With Custom Words
+#With Custom Words
 
 
 
@@ -173,7 +173,7 @@ party_company_24
 
 
 
-With Common Passwords
+#With Common Passwords
 
 
 
