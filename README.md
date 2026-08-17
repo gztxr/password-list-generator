@@ -134,27 +134,6 @@ Generate realistic passwords with all features:
 
 zynk -v --min 8 --max 24 -f words.txt --common --all --no-ambiguous -c 1000 -o final_wordlist.txt
 
-Command Line Options
-Option	Description
--l, --length N	Password length (default: 12)
--c, --count N	Number of passwords to generate (default: 10)
--v, --variable	Generate variable length passwords
---min N	Minimum length when using -v (default: 8)
---max N	Maximum length when using -v (default: 20)
--o, --output FILE	Output file name (default: passwords_YYYYMMDD_HHMMSS.txt)
--h, --help	Show help message
--a, --all	Use ALL character types
---lowercase	Include lowercase letters (a-z)
---uppercase	Include uppercase letters (A-Z)
---digits	Include digits (0-9)
---special	Include special characters (!@#$...)
---no-ambiguous	Exclude ambiguous chars (il1Lo0O)
--w, --words	Use dictionary words in passwords
--W, --add-word WORD	Add custom word to dictionary
--f, --word-file FILE	Load words from a file (one per line)
--C, --common	Include common/default passwords
-Output Examples
-Default Realistic Passwords
 
 johnson1992
 sarah_williams_2001
@@ -168,12 +147,12 @@ jessica_taylor_2010
 
 With Custom Words
 
-company2026_nigger
-nigger_company_2026
-company2026nigger
-niggercompany2026
-company_nigger_1986
-nigger_company_24
+company2026_party
+party_company_2026
+company2026party
+partycompany2026
+company_party_1986
+party_company_24
 
 With Common Passwords
 
