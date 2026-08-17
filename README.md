@@ -23,7 +23,7 @@ Linux / macOS
     Clone the repository:
 
 
-git clone https://github.com/gztxr/password-generator
+git clone https://github.com/gztxr/password-generator.git
 cd password-generator
 
     Compile the program:
@@ -42,7 +42,7 @@ Windows
 
     Clone the repository:
 
-git clone https://github.com/gztxr/password-generator
+git clone https://github.com/gztxr/password-generator.git
 cd password-generator
 
     Compile:
@@ -57,7 +57,7 @@ gcc -o zynk.exe password_generator.c
 
 Quick Install (Linux/macOS)
 
-git clone https://github.com/gztxr/password-generator
+git clone https://github.com/gztxr/password-generator.git
 cd password-generator
 gcc -o zynk password_generator.c
 sudo mv zynk /usr/local/bin/
@@ -80,33 +80,28 @@ zynk -l 16 -c 5
 Variable Length
 
 Generate passwords with varying lengths:
-bash
 
 zynk -v --min 8 --max 16 -c 20
 
 Custom Words
 
 Add your own words to the password generation:
-bash
 
 zynk -W company2026 -W secret -c 10
 
 Load words from a file:
-bash
 
 zynk -f words.txt -c 50
 
 Common Passwords
 
 Include default/common passwords:
-bash
 
 zynk --common -c 100
 
 Character Sets
 
 Use specific character sets:
-bash
 
 # All character types
 zynk --all -c 20
@@ -120,7 +115,6 @@ zynk --all --no-ambiguous -c 20
 Output File
 
 Specify custom output file:
-bash
 
 zynk -o mypasswords.txt -c 100
 
@@ -137,7 +131,6 @@ bash
 zynk -v --min 10 --max 20 -W company2026 -W admin -c 50 --all
 
 Generate realistic passwords with all features:
-bash
 
 zynk -v --min 8 --max 24 -f words.txt --common --all --no-ambiguous -c 1000 -o final_wordlist.txt
 
@@ -162,7 +155,6 @@ Option	Description
 -C, --common	Include common/default passwords
 Output Examples
 Default Realistic Passwords
-text
 
 johnson1992
 sarah_williams_2001
@@ -175,7 +167,6 @@ iloveyou12
 jessica_taylor_2010
 
 With Custom Words
-text
 
 company2026_nigger
 nigger_company_2026
@@ -185,7 +176,6 @@ company_nigger_1986
 nigger_company_24
 
 With Common Passwords
-text
 
 admin123
 password2024
