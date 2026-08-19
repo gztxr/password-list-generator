@@ -1,514 +1,935 @@
+#define _GNU_SOURCE
+
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <limits.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <ctype.h>
-#include <stdbool.h>
+#include <sys/random.h>
 #include <unistd.h>
 
-#define DEFAULT_LENGTH 12
+#define DEFAULT_LENGTH 16
 #define DEFAULT_COUNT 10
-#define MAX_WORDS 1000
-#define MAX_WORD_LENGTH 50
+#define MIN_PASSWORD_LENGTH 1
 #define MAX_PASSWORD_LENGTH 256
-#define MAX_FILENAME 256
+#define MAX_COUNT 1000000
+#define MAX_OUTPUT_FILENAME 4096
+
+#define LOWERCASE "abcdefghijklmnopqrstuvwxyz"
+#define UPPERCASE "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+#define DIGITS "0123456789"
+#define SPECIAL "!@#$%^&*()-_=+[]{}:,.?/"
+#define AMBIGUOUS "il1Lo0O"
 
 typedef struct {
-    bool use_lowercase;
-    bool use_uppercase;
-    bool use_digits;
-    bool use_special;
-    bool use_words;
-    bool use_common_passwords;
+    bool lowercase;
+    bool uppercase;
+    bool digits;
+    bool special;
+    bool require_lowercase;
+    bool require_uppercase;
+    bool require_digits;
+    bool require_special;
+    bool exclude_ambiguous;
     bool variable_length;
     int length_min;
     int length_max;
     int count;
-    bool exclude_ambiguous;
-    char words[MAX_WORDS][MAX_WORD_LENGTH];
-    int word_count;
-    char output_file[MAX_FILENAME];
+    bool stdout_mode;
+    char output_file[MAX_OUTPUT_FILENAME];
+    bool unique;
 } GeneratorConfig;
 
-const char* FIRST_NAMES[] = {
-    "alex", "john", "mike", "david", "james", "robert", "mark", "steven", "paul", "andrew",
-    "chris", "jason", "ryan", "kevin", "brian", "daniel", "matthew", "anthony", "donald", "timothy",
-    "sarah", "jessica", "emily", "rachel", "nicole", "amanda", "jennifer", "melissa", "laura", "kelly",
-    "megan", "ashley", "taylor", "courtney", "lauren", "brittany", "alexis", "jordan", "madison", "hannah"
-};
+typedef struct {
+    char **items;
+    size_t count;
+    size_t capacity;
+} PasswordSet;
 
-const char* LAST_NAMES[] = {
-    "smith", "johnson", "williams", "brown", "jones", "garcia", "miller", "davis", "rodriguez", "martinez",
-    "anderson", "taylor", "thomas", "jackson", "white", "harris", "martin", "thompson", "moore", "walker",
-    "king", "wright", "lopez", "hill", "scott", "green", "adams", "baker", "gonzalez", "nelson",
-    "carter", "mitchell", "perez", "roberts", "turner", "phillips", "campbell", "parker", "evans", "edwards"
-};
-
-const char* YEARS[] = {"1986", "1987", "1988", "1989", "1990", "1991", "1992", "1993", "1994", "1995",
-    "1996", "1997", "1998", "1999", "2000", "2001", "2002", "2003", "2004", "2005",
-    "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015",
-    "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"
-};
-
-const char* COMMON_WORDS[] = {
-    "password", "admin", "root", "guest", "user", "support", "default", "changeme",
-    "qwerty", "abc123", "letmein", "monkey", "dragon", "master", "login", "pass",
-    "iloveyou", "princess", "rockyou", "sunshine", "love", "angel", "honey", "baby",
-    "super", "star", "king", "queen", "lord", "sir", "lady", "dude", "bro", "mama", "papa"
-};
-
-const char* NUMBERS[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
-    "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
-    "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "50", "60", "70", "80", "90", "100"
-};
-
-const char* COMMON_PASSWORDS[] = {
-    "admin", "password", "123456", "12345678", "1234", "12345", 
-    "root", "guest", "user", "support", "default", "changeme",
-    "password123", "admin123", "adminadmin", "123456789", "qwerty", 
-    "abc123", "letmein", "monkey", "dragon", "master", "login",
-    "pass", "admin1", "administrator", "p@ssw0rd", "P@ssw0rd",
-    "123123", "654321", "111111", "000000", "password1", "passw0rd",
-    "adminpass", "root123", "guest123", "ubnt", "UBNT", "airport",
-    "camera", "ipcam", "admin1234", "1234567890", "qwertyuiop",
-    "asdfghjkl", "zxcvbnm", "1q2w3e4r", "1qaz2wsx", "qwerty123",
-    "admin_password", "default_password", "null", "none", "toor",
-    "raspberry", "pi", "alpine", "debian", "ubuntu", "centos",
-    "oracle", "postgres", "mysql", "mongo", "redis", "elastic",
-    "kibana", "logstash", "hadoop", "spark", "kafka", "zookeeper",
-    "cassandra", "couchdb", "rabbitmq", "activemq", "openvpn",
-    "cisco", "Cisco", "router", "switch", "ap", "wifi", "wireless",
-    "network", "internet", "gateway", "firewall", "proxy", "vpn"
-};
-
-#define FIRST_NAMES_COUNT (sizeof(FIRST_NAMES) / sizeof(FIRST_NAMES[0]))
-#define LAST_NAMES_COUNT (sizeof(LAST_NAMES) / sizeof(LAST_NAMES[0]))
-#define YEARS_COUNT (sizeof(YEARS) / sizeof(YEARS[0]))
-#define COMMON_WORDS_COUNT (sizeof(COMMON_WORDS) / sizeof(COMMON_WORDS[0]))
-#define NUMBERS_COUNT (sizeof(NUMBERS) / sizeof(NUMBERS[0]))
-#define COMMON_PASSWORDS_COUNT (sizeof(COMMON_PASSWORDS) / sizeof(COMMON_PASSWORDS[0]))
-
-void print_help(const char* program_name);
-void generate_realistic_password(char* password, int length);
-void generate_password_with_words(const GeneratorConfig* config, char* password);
-bool parse_args(int argc, char* argv[], GeneratorConfig* config);
-int get_random_length(const GeneratorConfig* config);
-void generate_filename(char* filename, size_t size);
-char* get_absolute_path(const char* filename);
-
-void print_help(const char* program_name) {
-    printf("\nPassword List Generator v2.0\n");
-    printf("Generates realistic passwords using names, years, and common patterns\n\n");
-    
-    printf("USAGE:\n");
-    printf("  %s [OPTIONS]\n\n", program_name);
-    
-    printf("BASIC OPTIONS:\n");
-    printf("  -l, --length N        Password length (default: %d)\n", DEFAULT_LENGTH);
-    printf("  -c, --count N         Number of passwords to generate (default: %d)\n", DEFAULT_COUNT);
-    printf("  -v, --variable        Generate variable length passwords\n");
-    printf("  --min N               Minimum length when using -v (default: 8)\n");
-    printf("  --max N               Maximum length when using -v (default: 20)\n");
-    printf("  -o, --output FILE     Output file name (default: passwords_YYYYMMDD_HHMMSS.txt)\n");
-    printf("  -h, --help            Show this help message\n\n");
-    
-    printf("CHARACTER SETS:\n");
-    printf("  -a, --all             Use ALL character types\n");
-    printf("  --lowercase           Include lowercase letters (a-z)\n");
-    printf("  --uppercase           Include uppercase letters (A-Z)\n");
-    printf("  --digits              Include digits (0-9)\n");
-    printf("  --special             Include special characters (!@#$...)\n");
-    printf("  --no-ambiguous        Exclude ambiguous chars (il1Lo0O)\n\n");
-    
-    printf("DICTIONARY & WORD OPTIONS:\n");
-    printf("  -w, --words           Use dictionary words in passwords\n");
-    printf("  -W, --add-word WORD   Add custom word to dictionary (can use multiple times)\n");
-    printf("  -f, --word-file FILE  Load words from a file (one per line)\n");
-    printf("  -C, --common          Include common/default passwords\n\n");
-    
-    printf("EXAMPLES:\n");
-    printf("  %s                      Generate 10 realistic passwords\n", program_name);
-    printf("  %s -c 100               Generate 100 realistic passwords\n", program_name);
-    printf("  %s -l 16 -c 5          Generate 5 passwords length 16\n", program_name);
-    printf("  %s -W myword --all -c 10\n", program_name);
-    printf("  %s -v --min 8 --max 16 -c 20\n\n", program_name);
+static void print_error(const char *message)
+{
+    fprintf(stderr, "Error: %s\n", message);
 }
 
-int get_random_length(const GeneratorConfig* config) {
-    if (config->variable_length) {
-        return config->length_min + (rand() % (config->length_max - config->length_min + 1));
-    }
-    return config->length_min;
-}
+static bool parse_positive_int(
+    const char *value,
+    long min,
+    long max,
+    int *result)
+{
+    char *end = NULL;
+    long parsed;
 
-void generate_realistic_password(char* password, int length) {
-    char temp[MAX_PASSWORD_LENGTH];
-    int pattern = rand() % 8;
-    
-    if (pattern == 0) {
-        const char* first = FIRST_NAMES[rand() % FIRST_NAMES_COUNT];
-        const char* last = LAST_NAMES[rand() % LAST_NAMES_COUNT];
-        const char* year = YEARS[rand() % YEARS_COUNT];
-        snprintf(temp, sizeof(temp), "%s%s%s", first, last, year);
-    }
-    else if (pattern == 1) {
-        const char* first = FIRST_NAMES[rand() % FIRST_NAMES_COUNT];
-        const char* last = LAST_NAMES[rand() % LAST_NAMES_COUNT];
-        const char* year = YEARS[rand() % YEARS_COUNT];
-        snprintf(temp, sizeof(temp), "%s_%s_%s", first, last, year);
-    }
-    else if (pattern == 2) {
-        const char* word = COMMON_WORDS[rand() % COMMON_WORDS_COUNT];
-        const char* number = NUMBERS[rand() % NUMBERS_COUNT];
-        const char* year = YEARS[rand() % YEARS_COUNT];
-        snprintf(temp, sizeof(temp), "%s%s%s", word, number, year);
-    }
-    else if (pattern == 3) {
-        const char* first = FIRST_NAMES[rand() % FIRST_NAMES_COUNT];
-        const char* word = COMMON_WORDS[rand() % COMMON_WORDS_COUNT];
-        const char* number = NUMBERS[rand() % NUMBERS_COUNT];
-        snprintf(temp, sizeof(temp), "%s%s%s", first, word, number);
-    }
-    else if (pattern == 4) {
-        const char* word1 = COMMON_WORDS[rand() % COMMON_WORDS_COUNT];
-        const char* word2 = COMMON_WORDS[rand() % COMMON_WORDS_COUNT];
-        const char* number = NUMBERS[rand() % NUMBERS_COUNT];
-        snprintf(temp, sizeof(temp), "%s%s%s", word1, word2, number);
-    }
-    else if (pattern == 5) {
-        const char* first = FIRST_NAMES[rand() % FIRST_NAMES_COUNT];
-        const char* year = YEARS[rand() % YEARS_COUNT];
-        snprintf(temp, sizeof(temp), "%s%s", first, year);
-    }
-    else if (pattern == 6) {
-        const char* word = COMMON_WORDS[rand() % COMMON_WORDS_COUNT];
-        const char* year = YEARS[rand() % YEARS_COUNT];
-        snprintf(temp, sizeof(temp), "%s%s", word, year);
-    }
-    else {
-        const char* first = FIRST_NAMES[rand() % FIRST_NAMES_COUNT];
-        const char* last = LAST_NAMES[rand() % LAST_NAMES_COUNT];
-        snprintf(temp, sizeof(temp), "%s%s", first, last);
-    }
-    
-    int temp_len = strlen(temp);
-    
-    if (temp_len < length) {
-        int need = length - temp_len;
-        int add_numbers = need / 2;
-        int add_chars = need - add_numbers;
-        
-        if (add_numbers > 0) {
-            for (int i = 0; i < add_numbers && temp_len < MAX_PASSWORD_LENGTH; i++) {
-                temp[temp_len++] = '0' + (rand() % 10);
-            }
-        }
-        
-        if (add_chars > 0) {
-            char* extra_chars = "abcdefghijklmnopqrstuvwxyz";
-            for (int i = 0; i < add_chars && temp_len < MAX_PASSWORD_LENGTH; i++) {
-                if (rand() % 3 == 0) {
-                    temp[temp_len++] = 'A' + (rand() % 26);
-                } else {
-                    temp[temp_len++] = extra_chars[rand() % 26];
-                }
-            }
-        }
-        temp[temp_len] = '\0';
-    }
-    else if (temp_len > length) {
-        temp[length] = '\0';
-    }
-    
-    strcpy(password, temp);
-}
+    if (value == NULL || *value == '\0')
+        return false;
 
-void generate_password_with_words(const GeneratorConfig* config, char* password) {
-    char temp_pass[MAX_PASSWORD_LENGTH];
-    int target_length = get_random_length(config);
-    
-    char word_pool[MAX_WORDS][MAX_WORD_LENGTH];
-    int pool_size = 0;
-    
-    for (int i = 0; i < config->word_count && pool_size < MAX_WORDS; i++) {
-        strcpy(word_pool[pool_size++], config->words[i]);
-    }
-    
-    if (config->use_common_passwords) {
-        for (int i = 0; i < COMMON_PASSWORDS_COUNT && pool_size < MAX_WORDS; i++) {
-            strcpy(word_pool[pool_size++], COMMON_PASSWORDS[i]);
-        }
-    }
-    
-    if (config->word_count > 0 || config->use_common_passwords) {
-        int num_words = 1 + (rand() % 2);
-        if (num_words > pool_size) num_words = pool_size;
-        
-        char selected_words[MAX_WORDS][MAX_WORD_LENGTH];
-        int used_indices[MAX_WORDS] = {0};
-        int total_word_len = 0;
-        
-        for (int i = 0; i < num_words; i++) {
-            int idx;
-            do {
-                idx = rand() % pool_size;
-            } while (used_indices[idx]);
-            used_indices[idx] = 1;
-            strcpy(selected_words[i], word_pool[idx]);
-            total_word_len += strlen(word_pool[idx]);
-        }
-        
-        int remaining_len = target_length - total_word_len;
-        if (remaining_len < 0) {
-            strcpy(temp_pass, selected_words[0]);
-            temp_pass[target_length] = '\0';
-            strcpy(password, temp_pass);
-            return;
-        }
-        
-        int pos = 0;
-        
-        for (int i = 0; i < num_words; i++) {
-            strcpy(&temp_pass[pos], selected_words[i]);
-            pos += strlen(selected_words[i]);
-            
-            if (i < num_words - 1 && rand() % 2 == 0) {
-                temp_pass[pos++] = '_';
-            }
-        }
-        
-        if (remaining_len > 0 && config->use_digits) {
-            int num_digits = 1 + (rand() % 4);
-            if (num_digits > remaining_len) num_digits = remaining_len;
-            
-            for (int i = 0; i < num_digits; i++) {
-                temp_pass[pos++] = '0' + (rand() % 10);
-            }
-            remaining_len -= num_digits;
-        }
-        
-        if (remaining_len > 0 && config->use_uppercase) {
-            int num_upper = 1 + (rand() % 2);
-            if (num_upper > remaining_len) num_upper = remaining_len;
-            
-            for (int i = 0; i < num_upper; i++) {
-                temp_pass[pos++] = 'A' + (rand() % 26);
-            }
-            remaining_len -= num_upper;
-        }
-        
-        if (remaining_len > 0 && config->use_special) {
-            int num_special = 1 + (rand() % 2);
-            if (num_special > remaining_len) num_special = remaining_len;
-            
-            char* special_chars = "!@#$%^&*";
-            for (int i = 0; i < num_special; i++) {
-                temp_pass[pos++] = special_chars[rand() % 8];
-            }
-            remaining_len -= num_special;
-        }
-        
-        if (remaining_len > 0) {
-            for (int i = 0; i < remaining_len; i++) {
-                temp_pass[pos++] = 'a' + (rand() % 26);
-            }
-        }
-        
-        temp_pass[pos] = '\0';
-        
-        int len = strlen(temp_pass);
-        if (len > target_length) {
-            temp_pass[target_length] = '\0';
-        }
-        
-        strcpy(password, temp_pass);
-    } else {
-        generate_realistic_password(password, target_length);
-    }
-}
+    errno = 0;
+    parsed = strtol(value, &end, 10);
 
-void generate_filename(char* filename, size_t size) {
-    time_t t;
-    struct tm* tm_info;
-    time(&t);
-    tm_info = localtime(&t);
-    strftime(filename, size, "passwords_%Y%m%d_%H%M%S.txt", tm_info);
-}
+    if (errno == ERANGE ||
+        end == value ||
+        *end != '\0' ||
+        parsed < min ||
+        parsed > max)
+        return false;
 
-char* get_absolute_path(const char* filename) {
-    static char path[1024];
-    char cwd[1024];
-    
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        snprintf(path, sizeof(path), "%s/%s", cwd, filename);
-        return path;
-    }
-    return (char*)filename;
-}
-
-bool parse_args(int argc, char* argv[], GeneratorConfig* config) {
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            print_help(argv[0]);
-            return false;
-        } else if (strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--length") == 0) {
-            if (i + 1 < argc) {
-                config->length_min = atoi(argv[++i]);
-                config->length_max = config->length_min;
-                if (config->length_min < 1) {
-                    printf("Error: Length must be at least 1\n");
-                    return false;
-                }
-            }
-        } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--count") == 0) {
-            if (i + 1 < argc) {
-                config->count = atoi(argv[++i]);
-                if (config->count < 1) {
-                    printf("Error: Count must be at least 1\n");
-                    return false;
-                }
-            }
-        } else if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0) {
-            if (i + 1 < argc) {
-                strcpy(config->output_file, argv[++i]);
-            }
-        } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--variable") == 0) {
-            config->variable_length = true;
-        } else if (strcmp(argv[i], "--min") == 0) {
-            if (i + 1 < argc) {
-                config->length_min = atoi(argv[++i]);
-                if (config->length_min < 1) {
-                    printf("Error: Minimum length must be at least 1\n");
-                    return false;
-                }
-            }
-        } else if (strcmp(argv[i], "--max") == 0) {
-            if (i + 1 < argc) {
-                config->length_max = atoi(argv[++i]);
-                if (config->length_max < config->length_min) {
-                    printf("Error: Maximum length must be >= minimum length\n");
-                    return false;
-                }
-            }
-        } else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--all") == 0) {
-            config->use_lowercase = true;
-            config->use_uppercase = true;
-            config->use_digits = true;
-            config->use_special = true;
-        } else if (strcmp(argv[i], "--lowercase") == 0) {
-            config->use_lowercase = true;
-        } else if (strcmp(argv[i], "--uppercase") == 0) {
-            config->use_uppercase = true;
-        } else if (strcmp(argv[i], "--digits") == 0) {
-            config->use_digits = true;
-        } else if (strcmp(argv[i], "--special") == 0) {
-            config->use_special = true;
-        } else if (strcmp(argv[i], "--no-ambiguous") == 0) {
-            config->exclude_ambiguous = true;
-        } else if (strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--words") == 0) {
-            config->use_words = true;
-        } else if (strcmp(argv[i], "-W") == 0 || strcmp(argv[i], "--add-word") == 0) {
-            if (i + 1 < argc) {
-                if (config->word_count < MAX_WORDS) {
-                    strcpy(config->words[config->word_count++], argv[++i]);
-                } else {
-                    printf("Warning: Max words reached, ignoring '%s'\n", argv[i]);
-                }
-            }
-        } else if (strcmp(argv[i], "-C") == 0 || strcmp(argv[i], "--common") == 0) {
-            config->use_common_passwords = true;
-        } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--word-file") == 0) {
-            if (i + 1 < argc) {
-                FILE* file = fopen(argv[++i], "r");
-                if (file) {
-                    char line[MAX_WORD_LENGTH];
-                    while (fgets(line, sizeof(line), file) && config->word_count < MAX_WORDS) {
-                        line[strcspn(line, "\n")] = 0;
-                        if (strlen(line) > 0) {
-                            strcpy(config->words[config->word_count++], line);
-                        }
-                    }
-                    fclose(file);
-                    printf("Loaded %d words from file\n", config->word_count);
-                } else {
-                    printf("Error: Could not open file '%s'\n", argv[i]);
-                    return false;
-                }
-            }
-        } else {
-            printf("Error: Unknown option '%s'\n", argv[i]);
-            printf("Try '%s --help' for usage information\n", argv[0]);
-            return false;
-        }
-    }
+    *result = (int)parsed;
     return true;
 }
 
-int main(int argc, char* argv[]) {
-    srand(time(NULL));
-    
+static bool secure_random_bytes(void *buffer, size_t length)
+{
+    unsigned char *ptr = buffer;
+
+    while (length > 0) {
+        ssize_t result = getrandom(ptr, length, 0);
+
+        if (result < 0) {
+            if (errno == EINTR)
+                continue;
+
+            return false;
+        }
+
+        if (result == 0)
+            return false;
+
+        ptr += result;
+        length -= (size_t)result;
+    }
+
+    return true;
+}
+
+static bool secure_random_bounded(
+    size_t upper_bound,
+    size_t *result)
+{
+    unsigned int random_value;
+    unsigned int limit;
+
+    if (upper_bound == 0 ||
+        upper_bound > (size_t)UINT_MAX)
+        return false;
+
+    limit = UINT_MAX -
+            (UINT_MAX % (unsigned int)upper_bound);
+
+    do {
+        if (!secure_random_bytes(
+                &random_value,
+                sizeof(random_value)))
+            return false;
+    } while (random_value >= limit);
+
+    *result = random_value % upper_bound;
+
+    return true;
+}
+
+static bool is_ambiguous(char c)
+{
+    return strchr(AMBIGUOUS, c) != NULL;
+}
+
+static bool character_allowed(
+    char c,
+    const GeneratorConfig *config)
+{
+    if (config->exclude_ambiguous &&
+        is_ambiguous(c))
+        return false;
+
+    return true;
+}
+
+static size_t build_character_pool(
+    const GeneratorConfig *config,
+    char *pool,
+    size_t pool_size)
+{
+    size_t length = 0;
+
+    const char *sets[4];
+    size_t set_count = 0;
+
+    if (config->lowercase)
+        sets[set_count++] = LOWERCASE;
+
+    if (config->uppercase)
+        sets[set_count++] = UPPERCASE;
+
+    if (config->digits)
+        sets[set_count++] = DIGITS;
+
+    if (config->special)
+        sets[set_count++] = SPECIAL;
+
+    for (size_t i = 0; i < set_count; ++i) {
+        const char *set = sets[i];
+
+        for (size_t j = 0; set[j] != '\0'; ++j) {
+            char c = set[j];
+
+            if (!character_allowed(c, config))
+                continue;
+
+            if (length + 1 >= pool_size)
+                return 0;
+
+            pool[length++] = c;
+        }
+    }
+
+    pool[length] = '\0';
+
+    return length;
+}
+
+static bool random_character_from_set(
+    const char *set,
+    const GeneratorConfig *config,
+    char *result)
+{
+    char filtered[256];
+    size_t count = 0;
+    size_t index;
+
+    for (size_t i = 0; set[i] != '\0'; ++i) {
+        if (character_allowed(set[i], config))
+            filtered[count++] = set[i];
+    }
+
+    if (count == 0)
+        return false;
+
+    if (!secure_random_bounded(count, &index))
+        return false;
+
+    *result = filtered[index];
+
+    return true;
+}
+
+static bool random_character_from_pool(
+    const char *pool,
+    size_t pool_length,
+    char *result)
+{
+    size_t index;
+
+    if (pool_length == 0)
+        return false;
+
+    if (!secure_random_bounded(pool_length, &index))
+        return false;
+
+    *result = pool[index];
+
+    return true;
+}
+
+static bool get_password_length(
+    const GeneratorConfig *config,
+    int *length)
+{
+    if (!config->variable_length) {
+        *length = config->length_min;
+        return true;
+    }
+
+    size_t range =
+        (size_t)(config->length_max -
+                 config->length_min + 1);
+
+    size_t offset;
+
+    if (!secure_random_bounded(range, &offset))
+        return false;
+
+    *length = config->length_min + (int)offset;
+
+    return true;
+}
+
+static bool generate_password(
+    const GeneratorConfig *config,
+    char *password,
+    size_t password_size)
+{
+    char pool[512];
+    size_t pool_length;
+    int length;
+
+    if (!get_password_length(config, &length))
+        return false;
+
+    if (length < MIN_PASSWORD_LENGTH ||
+        length > MAX_PASSWORD_LENGTH ||
+        password_size < (size_t)length + 1)
+        return false;
+
+    pool_length = build_character_pool(
+        config,
+        pool,
+        sizeof(pool));
+
+    if (pool_length == 0)
+        return false;
+
+    int required = 0;
+
+    if (config->require_lowercase)
+        required++;
+
+    if (config->require_uppercase)
+        required++;
+
+    if (config->require_digits)
+        required++;
+
+    if (config->require_special)
+        required++;
+
+    if (required > length)
+        return false;
+
+    size_t position = 0;
+
+    if (config->require_lowercase) {
+        if (!random_character_from_set(
+                LOWERCASE,
+                config,
+                &password[position++]))
+            return false;
+    }
+
+    if (config->require_uppercase) {
+        if (!random_character_from_set(
+                UPPERCASE,
+                config,
+                &password[position++]))
+            return false;
+    }
+
+    if (config->require_digits) {
+        if (!random_character_from_set(
+                DIGITS,
+                config,
+                &password[position++]))
+            return false;
+    }
+
+    if (config->require_special) {
+        if (!random_character_from_set(
+                SPECIAL,
+                config,
+                &password[position++]))
+            return false;
+    }
+
+    while (position < (size_t)length) {
+        if (!random_character_from_pool(
+                pool,
+                pool_length,
+                &password[position]))
+            return false;
+
+        position++;
+    }
+
+    password[length] = '\0';
+
+    for (size_t i = (size_t)length - 1; i > 0; --i) {
+        size_t j;
+
+        if (!secure_random_bounded(i + 1, &j))
+            return false;
+
+        char temp = password[i];
+        password[i] = password[j];
+        password[j] = temp;
+    }
+
+    return true;
+}
+
+static void password_set_free(PasswordSet *set)
+{
+    if (set == NULL)
+        return;
+
+    for (size_t i = 0; i < set->count; ++i)
+        free(set->items[i]);
+
+    free(set->items);
+
+    set->items = NULL;
+    set->count = 0;
+    set->capacity = 0;
+}
+
+static bool password_set_contains(
+    const PasswordSet *set,
+    const char *password)
+{
+    for (size_t i = 0; i < set->count; ++i) {
+        if (strcmp(set->items[i], password) == 0)
+            return true;
+    }
+
+    return false;
+}
+
+static bool password_set_add(
+    PasswordSet *set,
+    const char *password)
+{
+    if (password_set_contains(set, password))
+        return false;
+
+    if (set->count == set->capacity) {
+        size_t new_capacity =
+            set->capacity == 0
+                ? 128
+                : set->capacity * 2;
+
+        char **new_items =
+            realloc(
+                set->items,
+                new_capacity * sizeof(*new_items));
+
+        if (new_items == NULL)
+            return false;
+
+        set->items = new_items;
+        set->capacity = new_capacity;
+    }
+
+    set->items[set->count] = strdup(password);
+
+    if (set->items[set->count] == NULL)
+        return false;
+
+    set->count++;
+
+    return true;
+}
+
+static void print_help(const char *program)
+{
+    printf(
+        "\n"
+        "Secure Password Generator\n"
+        "=========================\n\n"
+        "Usage:\n"
+        "  %s [OPTIONS]\n\n"
+        "Length:\n"
+        "  -l, --length N       Password length (default: %d)\n"
+        "  -v, --variable       Random length between --min and --max\n"
+        "      --min N          Minimum variable length (default: 8)\n"
+        "      --max N          Maximum variable length (default: 32)\n\n"
+        "Character classes:\n"
+        "      --lowercase      Allow lowercase letters\n"
+        "      --uppercase      Allow uppercase letters\n"
+        "      --digits         Allow digits\n"
+        "      --special        Allow special characters\n"
+        "  -a, --all            Allow all character classes\n\n"
+        "Required classes:\n"
+        "      --require-lowercase\n"
+        "      --require-uppercase\n"
+        "      --require-digits\n"
+        "      --require-special\n\n"
+        "Other:\n"
+        "  -c, --count N        Number of passwords (default: %d)\n"
+        "      --no-ambiguous   Exclude il1Lo0O\n"
+        "      --unique         Do not output duplicates\n"
+        "      --stdout         Write passwords to stdout\n"
+        "  -o, --output FILE    Write passwords to FILE\n"
+        "  -h, --help           Show this help\n\n",
+        program,
+        DEFAULT_LENGTH,
+        DEFAULT_COUNT
+    );
+}
+
+static bool validate_config(
+    const GeneratorConfig *config)
+{
+    if (config->length_min < MIN_PASSWORD_LENGTH ||
+        config->length_min > MAX_PASSWORD_LENGTH) {
+        print_error("invalid minimum password length");
+        return false;
+    }
+
+    if (config->length_max < MIN_PASSWORD_LENGTH ||
+        config->length_max > MAX_PASSWORD_LENGTH) {
+        print_error("invalid maximum password length");
+        return false;
+    }
+
+    if (config->length_max < config->length_min) {
+        print_error(
+            "--max must be greater than or equal to --min");
+        return false;
+    }
+
+    if (config->count < 1 ||
+        config->count > MAX_COUNT) {
+        print_error("invalid count");
+        return false;
+    }
+
+    if (!config->lowercase &&
+        !config->uppercase &&
+        !config->digits &&
+        !config->special) {
+        print_error(
+            "at least one character class must be enabled");
+        return false;
+    }
+
+    int required = 0;
+
+    if (config->require_lowercase)
+        required++;
+
+    if (config->require_uppercase)
+        required++;
+
+    if (config->require_digits)
+        required++;
+
+    if (config->require_special)
+        required++;
+
+    if (config->length_min < required) {
+        print_error(
+            "minimum password length is too small for "
+            "the required character classes");
+        return false;
+    }
+
+    if (config->exclude_ambiguous) {
+        char pool[512];
+
+        if (build_character_pool(
+                config,
+                pool,
+                sizeof(pool)) == 0) {
+            print_error(
+                "character set is empty after "
+                "excluding ambiguous characters");
+            return false;
+        }
+    }
+
+    if (config->stdout_mode &&
+        config->output_file[0] != '\0') {
+        print_error(
+            "--stdout and --output cannot be used together");
+        return false;
+    }
+
+    return true;
+}
+
+static bool parse_args(
+    int argc,
+    char **argv,
+    GeneratorConfig *config)
+{
+    static const struct option long_options[] = {
+        {"length",             required_argument, 0, 'l'},
+        {"count",              required_argument, 0, 'c'},
+        {"variable",           no_argument,       0, 'v'},
+        {"min",                required_argument, 0, 1},
+        {"max",                required_argument, 0, 2},
+        {"lowercase",          no_argument,       0, 3},
+        {"uppercase",          no_argument,       0, 4},
+        {"digits",             no_argument,       0, 5},
+        {"special",            no_argument,       0, 6},
+        {"all",                no_argument,       0, 'a'},
+        {"require-lowercase",  no_argument,       0, 7},
+        {"require-uppercase",  no_argument,       0, 8},
+        {"require-digits",     no_argument,       0, 9},
+        {"require-special",    no_argument,       0, 10},
+        {"no-ambiguous",       no_argument,       0, 11},
+        {"unique",             no_argument,       0, 12},
+        {"stdout",             no_argument,       0, 13},
+        {"output",             required_argument, 0, 'o'},
+        {"help",               no_argument,       0, 'h'},
+        {0, 0, 0, 0}
+    };
+
+    int option_index = 0;
+    int option;
+
+    while ((option = getopt_long(
+                argc,
+                argv,
+                "l:c:vao:h",
+                long_options,
+                &option_index)) != -1) {
+
+        switch (option) {
+
+        case 'l':
+            if (!parse_positive_int(
+                    optarg,
+                    MIN_PASSWORD_LENGTH,
+                    MAX_PASSWORD_LENGTH,
+                    &config->length_min)) {
+                print_error("invalid password length");
+                return false;
+            }
+
+            config->length_max = config->length_min;
+            break;
+
+        case 'c':
+            if (!parse_positive_int(
+                    optarg,
+                    1,
+                    MAX_COUNT,
+                    &config->count)) {
+                print_error("invalid count");
+                return false;
+            }
+            break;
+
+        case 'v':
+            config->variable_length = true;
+            break;
+
+        case 'a':
+            config->lowercase = true;
+            config->uppercase = true;
+            config->digits = true;
+            config->special = true;
+
+            config->require_lowercase = true;
+            config->require_uppercase = true;
+            config->require_digits = true;
+            config->require_special = true;
+            break;
+
+        case 'o':
+            if (strlen(optarg) >= MAX_OUTPUT_FILENAME) {
+                print_error("output filename is too long");
+                return false;
+            }
+
+            strcpy(config->output_file, optarg);
+            break;
+
+        case 'h':
+            print_help(argv[0]);
+            exit(EXIT_SUCCESS);
+
+        case 1:
+            if (!parse_positive_int(
+                    optarg,
+                    MIN_PASSWORD_LENGTH,
+                    MAX_PASSWORD_LENGTH,
+                    &config->length_min)) {
+                print_error("invalid minimum length");
+                return false;
+            }
+            break;
+
+        case 2:
+            if (!parse_positive_int(
+                    optarg,
+                    MIN_PASSWORD_LENGTH,
+                    MAX_PASSWORD_LENGTH,
+                    &config->length_max)) {
+                print_error("invalid maximum length");
+                return false;
+            }
+            break;
+
+        case 3:
+            config->lowercase = true;
+            break;
+
+        case 4:
+            config->uppercase = true;
+            break;
+
+        case 5:
+            config->digits = true;
+            break;
+
+        case 6:
+            config->special = true;
+            break;
+
+        case 7:
+            config->lowercase = true;
+            config->require_lowercase = true;
+            break;
+
+        case 8:
+            config->uppercase = true;
+            config->require_uppercase = true;
+            break;
+
+        case 9:
+            config->digits = true;
+            config->require_digits = true;
+            break;
+
+        case 10:
+            config->special = true;
+            config->require_special = true;
+            break;
+
+        case 11:
+            config->exclude_ambiguous = true;
+            break;
+
+        case 12:
+            config->unique = true;
+            break;
+
+        case 13:
+            config->stdout_mode = true;
+            break;
+
+        case '?':
+        default:
+            print_error("invalid command-line option");
+            return false;
+        }
+    }
+
+    if (optind < argc) {
+        fprintf(
+            stderr,
+            "Error: unexpected argument '%s'\n",
+            argv[optind]);
+
+        return false;
+    }
+
+    return true;
+}
+
+static FILE *open_output(
+    const GeneratorConfig *config)
+{
+    if (config->stdout_mode)
+        return stdout;
+
+    const char *filename =
+        config->output_file[0] != '\0'
+            ? config->output_file
+            : "passwords.txt";
+
+    int fd = open(
+        filename,
+        O_WRONLY | O_CREAT | O_TRUNC,
+        0600);
+
+    if (fd < 0)
+        return NULL;
+
+    FILE *file = fdopen(fd, "w");
+
+    if (file == NULL) {
+        close(fd);
+        return NULL;
+    }
+
+    return file;
+}
+
+int main(int argc, char **argv)
+{
     GeneratorConfig config = {
-        .use_lowercase = true,
-        .use_uppercase = false,
-        .use_digits = false,
-        .use_special = false,
-        .use_words = false,
-        .use_common_passwords = false,
+        .lowercase = true,
+        .uppercase = true,
+        .digits = true,
+        .special = false,
+
+        .require_lowercase = false,
+        .require_uppercase = false,
+        .require_digits = false,
+        .require_special = false,
+
+        .exclude_ambiguous = false,
+
         .variable_length = false,
         .length_min = DEFAULT_LENGTH,
         .length_max = DEFAULT_LENGTH,
+
         .count = DEFAULT_COUNT,
-        .exclude_ambiguous = false,
-        .word_count = 0,
-        .output_file = {0}
+
+        .stdout_mode = false,
+        .output_file = {0},
+
+        .unique = false
     };
-    
+
     if (!parse_args(argc, argv, &config)) {
-        return 1;
+        fprintf(
+            stderr,
+            "Try '%s --help' for usage.\n",
+            argv[0]);
+
+        return EXIT_FAILURE;
     }
-    
-    if (strlen(config.output_file) == 0) {
-        generate_filename(config.output_file, sizeof(config.output_file));
+
+    if (!validate_config(&config))
+        return EXIT_FAILURE;
+
+    FILE *output = open_output(&config);
+
+    if (output == NULL) {
+        fprintf(
+            stderr,
+            "Error: could not open output file '%s': %s\n",
+            config.output_file[0] != '\0'
+                ? config.output_file
+                : "passwords.txt",
+            strerror(errno));
+
+        return EXIT_FAILURE;
     }
-    
-    FILE* file = fopen(config.output_file, "w");
-    if (!file) {
-        printf("Error: Could not create file '%s'\n", config.output_file);
-        return 1;
-    }
-    
-    printf("\nGenerating %d realistic passwords...\n", config.count);
-    printf("  Length: ");
-    if (config.variable_length) {
-        printf("%d to %d (variable)\n", config.length_min, config.length_max);
-    } else {
-        printf("%d\n", config.length_min);
-    }
-    
-    if (config.word_count > 0) printf("  Custom words: %d\n", config.word_count);
-    if (config.use_common_passwords) printf("  Including common passwords\n");
-    printf("\n");
-    
-    char password[MAX_PASSWORD_LENGTH];
-    
-    for (int i = 0; i < config.count; i++) {
-        if (config.word_count > 0 || config.use_common_passwords) {
-            generate_password_with_words(&config, password);
-        } else {
-            generate_realistic_password(password, get_random_length(&config));
+
+    PasswordSet generated = {0};
+
+    char password[MAX_PASSWORD_LENGTH + 1];
+
+    int generated_count = 0;
+    int attempts = 0;
+
+    const int max_attempts =
+        config.unique
+            ? config.count * 100
+            : config.count;
+
+    while (generated_count < config.count) {
+
+        if (attempts >= max_attempts) {
+            print_error(
+                "unable to generate enough unique passwords");
+
+            password_set_free(&generated);
+
+            if (output != stdout)
+                fclose(output);
+
+            return EXIT_FAILURE;
         }
-        fprintf(file, "%s\n", password);
-        
-        if ((i + 1) % 100 == 0) {
-            printf("  Progress: %d/%d passwords generated\n", i + 1, config.count);
+
+        attempts++;
+
+        if (!generate_password(
+                &config,
+                password,
+                sizeof(password))) {
+
+            print_error("password generation failed");
+
+            password_set_free(&generated);
+
+            if (output != stdout)
+                fclose(output);
+
+            return EXIT_FAILURE;
+        }
+
+        if (config.unique) {
+            if (password_set_contains(
+                    &generated,
+                    password)) {
+                continue;
+            }
+
+            if (!password_set_add(
+                    &generated,
+                    password)) {
+
+                print_error(
+                    "failed to maintain duplicate set");
+
+                password_set_free(&generated);
+
+                if (output != stdout)
+                    fclose(output);
+
+                return EXIT_FAILURE;
+            }
+        }
+
+        if (fprintf(output, "%s\n", password) < 0) {
+            print_error("failed to write output");
+
+            password_set_free(&generated);
+
+            if (output != stdout)
+                fclose(output);
+
+            return EXIT_FAILURE;
+        }
+
+        generated_count++;
+
+        if (!config.stdout_mode &&
+            generated_count % 1000 == 0) {
+
+            fprintf(
+                stderr,
+                "Generated %d/%d\n",
+                generated_count,
+                config.count);
         }
     }
-    
-    fclose(file);
-    
-    char* abs_path = get_absolute_path(config.output_file);
-    printf("\nSuccessfully generated %d passwords\n", config.count);
-    printf("File saved to: %s\n\n", abs_path);
-    
-    return 0;
+
+    if (fflush(output) != 0) {
+        print_error("failed to flush output");
+
+        password_set_free(&generated);
+
+        if (output != stdout)
+            fclose(output);
+
+        return EXIT_FAILURE;
+    }
+
+    if (output != stdout) {
+        if (fclose(output) != 0) {
+            print_error("failed to close output file");
+
+            password_set_free(&generated);
+
+            return EXIT_FAILURE;
+        }
+    }
+
+    password_set_free(&generated);
+
+    volatile char *secure_clear = password;
+
+    for (size_t i = 0; i < sizeof(password); ++i)
+        secure_clear[i] = '\0';
+
+    if (!config.stdout_mode) {
+        printf(
+            "Successfully generated %d password(s).\n",
+            generated_count);
+
+        printf(
+            "Output: %s\n",
+            config.output_file[0] != '\0'
+                ? config.output_file
+                : "passwords.txt");
+    }
+
+    return EXIT_SUCCESS;
 }
